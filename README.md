@@ -479,4 +479,3 @@ Result:
 ✔ Audit trail (`invited_by`) added
 ✔ Tenant‑safe querying understood
 ✔ Backend security enforced correctly
-
