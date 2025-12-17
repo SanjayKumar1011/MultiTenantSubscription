@@ -55,3 +55,30 @@ class UserResponseSerializer(serializers.ModelSerializer):
             'role',
             'organization',
         )
+
+class InviteUserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ('username', 'email', 'role')
+
+    def validate_role(self, value):
+        if value not in ['ADMIN', 'MEMBER']:
+            raise serializers.ValidationError("Only ADMIN or MEMBER can be invited")
+        return value
+
+    def create(self, validated_data):
+        request = self.context['request']
+        inviter = request.user
+
+        user = User.objects.create_user(
+            username=validated_data['username'],
+            email=validated_data['email'],
+            role=validated_data['role'],
+            organization=inviter.organization,
+            invited_by=inviter
+        )
+
+        user.set_unusable_password()
+        user.save()
+
+        return user

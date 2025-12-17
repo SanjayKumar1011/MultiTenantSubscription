@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'accounts',
     'organization',
     'drf_spectacular',
+    'projects',
 ]
 
 MIDDLEWARE = [

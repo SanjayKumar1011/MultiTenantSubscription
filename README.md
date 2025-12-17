@@ -262,3 +262,221 @@ def validate_organization_name(self, value):
 }
 ```
 ------------------------------------------------------------------------------------------------------------------
+# Day 3 – RBAC, Invite Users & Tenant‑Safe Querying
+
+This document explains **what we built on Day 3**, **why it matters**, and **how it actually works in Django + DRF**. This day is critical for real backend credibility.
+
+---
+
+## 🎯 Day 3 Goal
+
+Make the system **multi‑tenant safe** and **role aware** so that:
+
+* Users only see their own organization’s data
+* Owners/Admins can invite users
+* Backend enforces rules (not frontend)
+
+---
+
+## 1️⃣ RBAC (Role‑Based Access Control)
+
+### What is RBAC?
+
+RBAC means **what a user can do depends on their role**.
+
+In our system:
+
+* **OWNER** → full access
+* **ADMIN** → manage users, projects
+* **MEMBER** → read/write limited resources
+
+---
+
+### Why RBAC is mandatory
+
+Without RBAC:
+
+* Any authenticated user could invite others
+* Any user could access admin data
+
+RBAC ensures:
+
+* Business rules live in backend
+* Security is not UI‑dependent
+
+---
+
+### Permission Class Example
+
+```python
+from rest_framework.permissions import BasePermission
+
+class IsOwnerOrAdmin(BasePermission):
+    def has_permission(self, request, view):
+        return request.user.role in ['OWNER', 'ADMIN']
+```
+
+**How it works**
+
+* DRF automatically calls `has_permission()`
+* If it returns `False` → 403 Forbidden
+
+---
+
+## 2️⃣ Invite User API
+
+### Why Invite API is needed
+
+End users **cannot create users directly**.
+
+Instead:
+
+* OWNER / ADMIN invites a user
+* User is created under same organization
+
+---
+
+### Who invited the user?
+
+We store it explicitly:
+
+```python
+invited_by = models.ForeignKey(
+    User,
+    on_delete=models.SET_NULL,
+    null=True,
+    related_name='invited_users'
+)
+```
+
+This answers:
+
+* Who added this user?
+* Audit trail
+
+---
+
+### Invite User Flow
+
+1. Authenticated user calls invite API
+2. Backend checks role (RBAC)
+3. New user is created under same organization
+4. `invited_by` is stored
+
+---
+
+### Example Invite Response
+
+```json
+{
+  "message": "User invited successfully",
+  "user": {
+    "id": 4,
+    "username": "Mallesh",
+    "email": "mallesh@gmail.com",
+    "role": "ADMIN",
+    "invited_by": "Usha",
+    "organization": "HOME"
+  }
+}
+```
+
+This is **production‑grade API design**.
+
+---
+
+## 3️⃣ Tenant‑Safe Querying (MOST IMPORTANT)
+
+### The Core Problem
+
+If you do this:
+
+```python
+Project.objects.all()
+```
+
+❌ Any user can see **all organizations’ data**.
+
+---
+
+### Tenant‑Safe Principle
+
+> Every query must be scoped by the user’s organization.
+
+---
+
+### Example: Project App (Conceptual)
+
+Assume a `Project` belongs to an organization:
+
+```python
+class Project(models.Model):
+    name = models.CharField(max_length=100)
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE)
+```
+
+---
+
+### Tenant‑Safe ViewSet
+
+```python
+class ProjectViewSet(ModelViewSet):
+    serializer_class = ProjectSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Project.objects.filter(
+            organization=self.request.user.organization
+        )
+```
+
+---
+
+### ❓ "But we are not calling get_queryset() anywhere"
+
+You **never call it manually**.
+
+DRF internally calls:
+
+* `get_queryset()` for
+
+  * list
+  * retrieve
+  * update
+  * delete
+
+So every request is automatically tenant‑scoped.
+
+---
+
+### Another Tenant‑Safe Example (Orders)
+
+```python
+class OrderViewSet(ModelViewSet):
+    def get_queryset(self):
+        return Order.objects.filter(
+            organization=self.request.user.organization
+        )
+```
+
+Result:
+
+* User from Org A → sees only Org A orders
+* User from Org B → sees only Org B orders
+
+---
+
+### Why this is interview‑critical
+
+> "We enforced tenant isolation at the queryset level to prevent cross‑organization data leakage."
+
+---
+
+## ✅ Day 3 Summary
+
+✔ RBAC implemented via permission classes
+✔ Invite user API built
+✔ Audit trail (`invited_by`) added
+✔ Tenant‑safe querying understood
+✔ Backend security enforced correctly
+
