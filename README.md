@@ -479,3 +479,177 @@ Result:
 ✔ Audit trail (`invited_by`) added
 ✔ Tenant‑safe querying understood
 ✔ Backend security enforced correctly
+
+----------------------------------------------------------------
+
+# Day 4 – Subscriptions, Plans & Limits
+
+Day 4 focuses on **monetization logic and enforcement**, turning the system into a real SaaS backend.
+
+---
+
+## 🎯 Day 4 Goals
+
+* Introduce **Plans & Subscriptions**
+* Enforce **feature limits** at backend level
+* Apply limits on:
+
+  * User invites
+  * Project creation
+* Avoid signals and keep logic explicit
+
+---
+
+## 1️⃣ Why Subscriptions & Plans Are Needed
+
+Authentication + multi-tenancy is not enough for SaaS.
+
+To monetize and control usage:
+
+* Different orgs get different limits
+* Backend must **enforce limits**, not frontend
+
+---
+
+## 2️⃣ Plan Model
+
+### Purpose
+
+Defines **what is allowed**.
+
+Typical fields:
+
+* name (FREE / PRO / ENTERPRISE)
+* max_users
+* max_projects
+
+Plans are **global**, reusable across organizations.
+
+---
+
+## 3️⃣ Subscription Model
+
+### Purpose
+
+Connects an **Organization** to a **Plan**.
+
+Key ideas:
+
+* One organization → one active subscription
+* Subscription decides limits
+
+---
+
+## 4️⃣ Seeding Plan Data (Important)
+
+Plans **do not magically exist**.
+
+They must be created manually or via:
+
+* Django shell
+* Data migration
+* Management command
+
+Example logic expectation:
+
+```python
+free_plan = Plan.objects.get(name='FREE')
+```
+
+⚠️ This only works **after** plans are seeded.
+
+---
+
+## 5️⃣ Creating Subscription WITHOUT Signals
+
+We intentionally avoided Django signals.
+
+### Why?
+
+* Signals hide business logic
+* Harder to debug
+* Harder to test
+
+### What we did instead
+
+When an organization is created (signup):
+
+1. Create organization
+2. Fetch FREE plan
+3. Create subscription explicitly
+
+This keeps flow:
+
+* Predictable
+* Readable
+* Interview-safe
+
+---
+
+## 6️⃣ Enforcing Limits (Core of Day 4)
+
+Limits are enforced **inside APIs**, not models.
+
+---
+
+### A) Enforcing Invite Limits
+
+Before inviting user:
+
+* Count existing users in org
+* Compare with subscription.max_users
+
+If exceeded → raise error
+
+This caused the runtime error you saw:
+
+```
+RelatedObjectDoesNotExist: Organization has no subscription
+```
+
+Which revealed:
+
+* Some orgs were created before subscriptions existed
+
+This is GOOD — it exposed a real bug.
+
+---
+
+### B) Enforcing Project Limits
+
+In Project creation:
+
+* Count existing projects
+* Compare with subscription.max_projects
+
+Prevents overuse even if frontend tries.
+
+---
+
+## 7️⃣ Why Invite API Worked for New Signup
+
+You observed:
+
+* Old orgs failed
+* New orgs worked
+
+Reason:
+
+* New signup flow correctly creates subscription
+* Old orgs had **no subscription row**
+
+This confirms the architecture is correct.
+
+---
+
+## 8️⃣ Object-Level Permissions (Recap)
+
+We ensured:
+
+* Users only modify data from their org
+* Role-based access is enforced
+
+RBAC + subscriptions = real SaaS control.
+
+---
+

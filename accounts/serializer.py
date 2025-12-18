@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from organization.models import Organization
-
+from subscriptions.models import Plan, Subscription
 User = get_user_model()
 
 class SignupSerializer(serializers.ModelSerializer):
@@ -29,6 +29,12 @@ class SignupSerializer(serializers.ModelSerializer):
 
         organization = Organization.objects.create(name=org_name)
 
+            # Assign default FREE plan
+        free_plan=Plan.objects.get(name='FREE')
+        Subscription.objects.create(
+            organization=organization,
+            plan=free_plan
+        )
         user = User.objects.create_user(
             **validated_data,
             organization=organization,
@@ -69,6 +75,18 @@ class InviteUserSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         request = self.context['request']
         inviter = request.user
+        organization = inviter.organization
+
+        subsscription = organization.subscription
+        plan = subsscription.plan
+
+        current_user_count = organization.users.count()
+        if current_user_count >= plan.max_users:
+            raise serializers.ValidationError(
+                f"User limit reached. Cannot invite more users for {plan.name} plan."
+                " Please upgrade your plan."
+            )
+
 
         user = User.objects.create_user(
             username=validated_data['username'],
