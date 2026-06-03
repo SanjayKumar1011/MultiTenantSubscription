@@ -1,10 +1,87 @@
 # Multi-Tenant SaaS Backend (Django + DRF)
 
-This project demonstrates a production-ready backend architecture
-with JWT authentication, multi-tenancy, role-based access control,
-and clean API design.
+A multi-tenant SaaS backend with JWT authentication, organisation-based
+tenant isolation, role-based access control, and plan-based subscription
+limits. Built incrementally as a four-day backend exercise with the
+engineering decisions documented inline.
 
-Built incrementally with documented engineering decisions.
+## Features
+
+- **Multi-tenancy**: every user belongs to an `Organization`; all
+  queries are scoped to `request.user.organization`.
+- **Roles**: `OWNER`, `ADMIN`, `MEMBER` (RBAC via DRF permission classes).
+- **Self-service signup** that atomically creates the organisation, the
+  OWNER user, and a default `FREE` subscription.
+- **Invite users**: OWNER / ADMIN can invite teammates into their org.
+  `invited_by` is stored for audit.
+- **Plan + Subscription** models with `max_users` and `max_projects`
+  limits enforced at the API layer (not via signals or the model layer).
+- **JWT auth** via `djangorestframework-simplejwt`.
+- **OpenAPI schema** via `drf-spectacular`.
+
+## Tech stack
+
+- Python 3.10+
+- Django 6 + Django REST Framework
+- `djangorestframework-simplejwt`
+- `drf-spectacular`
+- `python-dotenv` for configuration
+- SQLite by default; swap to PostgreSQL by editing `DATABASES` in
+  `core/settings.py`.
+
+## Setup
+
+```bash
+python -m venv venv
+.\venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env             # set SECRET_KEY, DEBUG, ALLOWED_HOSTS
+python manage.py migrate
+python manage.py runserver
+```
+
+Then seed the plans (see the journal below for why this is explicit and
+not done by a signal):
+
+```python
+# python manage.py shell
+from subscriptions.models import Plan
+Plan.objects.create(name='FREE',  max_users=3,  max_projects=2)
+Plan.objects.create(name='PRO',   max_users=20, max_projects=20)
+Plan.objects.create(name='ENTERPRISE', max_users=200, max_projects=200)
+```
+
+## Endpoints (high level)
+
+| Method | URL                          | Auth         | Action                                        |
+| ------ | ---------------------------- | ------------ | --------------------------------------------- |
+| `POST` | `/api/auth/signup/`          | Public       | Create user + organisation + FREE subscription |
+| `POST` | `/api/auth/login/`           | Public       | Obtain JWT pair                                |
+| `GET`  | `/api/me/`                   | Authenticated| Current user                                   |
+| `POST` | `/api/users/invite/`         | OWNER/ADMIN  | Invite a user into the same organisation       |
+| CRUD   | `/api/projects/`             | Authenticated| Tenant-scoped projects (limited by plan)       |
+| `POST` | `/api/subscriptions/upgrade/`| OWNER        | Upgrade to a higher plan                       |
+
+## Project structure
+
+```text
+multi-tenant-subscription/
+├── core/                 # Django project (settings, urls)
+├── accounts/             # Custom User (role + organization) + auth views
+├── organization/         # Organization model (the tenant)
+├── projects/             # Tenant-scoped Project ViewSet
+├── subscriptions/        # Plan, Subscription, upgrade view
+├── manage.py
+└── requirements.txt
+```
+
+---
+
+> **Below this line is the original four-day dev journal** with the
+> engineering decisions and "interview-ready reasons" for each choice. Keep
+> it for context; the section above is the high-level overview.
+
+---
 
 
 ## DAY 1 – Foundation & Authentication
